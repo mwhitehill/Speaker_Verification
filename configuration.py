@@ -25,12 +25,12 @@ data_arg.add_argument('--noise_path', type=str, default='./noise', help="noise d
 data_arg.add_argument('--train_path', type=str, default='./train_tisv', help="train dataset directory")
 data_arg.add_argument('--test_path', type=str, default='./test_tisv', help="test dataset directory")
 data_arg.add_argument('--tdsv', type=str2bool, default=False, help="text dependent or not")
-data_arg.add_argument('--sr', type=int, default=8000, help="sampling rate")
-data_arg.add_argument('--nfft', type=int, default=512, help="fft kernel size")
-data_arg.add_argument('--window', type=int, default=0.025, help="window length (ms)")
-data_arg.add_argument('--hop', type=int, default=0.01, help="hop size (ms)")
+data_arg.add_argument('--sr', type=int, default=16000, help="sampling rate")
+data_arg.add_argument('--nfft', type=int, default=2048, help="fft kernel size")
+data_arg.add_argument('--window', type=int, default=800, help="window size in samples") #.025s
+data_arg.add_argument('--hop', type=int, default=200, help="hop_size in samples") #.01s
 data_arg.add_argument('--tdsv_frame', type=int, default=80, help="frame number of utterance of tdsv")
-data_arg.add_argument('--tisv_frame', type=int, default=180, help="max frame number of utterances of tdsv")
+data_arg.add_argument('--tisv_frame', type=int, default=140, help="max frame number of utterances of tdsv") #180
 
 # Model Parameters
 model_arg = parser.add_argument_group('Model')
@@ -54,6 +54,7 @@ train_arg.add_argument('--beta1', type=float, default=0.5, help="beta1")
 train_arg.add_argument('--beta2', type=float, default=0.9, help="beta2")
 train_arg.add_argument('--iteration', type=int, default=100000, help="max iteration")
 train_arg.add_argument('--comment', type=str, default='', help="any comment")
+
 
 config = get_config()
 print(config)           # print all the arguments

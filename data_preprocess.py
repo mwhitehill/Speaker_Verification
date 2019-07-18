@@ -1,9 +1,12 @@
 import os
 import librosa
 import numpy as np
+import glob
 import matplotlib.pyplot as plt
 from configuration import get_config
 from utils import keyword_spot
+import pandas as pd
+import argparse
 
 config = get_config()   # get arguments from parser
 
@@ -97,7 +100,9 @@ def save_spectrogram_tisv():
     os.makedirs(config.train_path, exist_ok=True)   # make folder to save train file
     os.makedirs(config.test_path, exist_ok=True)    # make folder to save test file
 
-    utter_min_len = (config.tisv_frame * config.hop + config.window) * config.sr    # lower bound of utterance length
+    hop = .01
+    window = .025
+    utter_min_len = (config.tisv_frame * hop + window) * config.sr    # lower bound of utterance length
     total_speaker_num = len(os.listdir(audio_path))
     train_speaker_num= (total_speaker_num//10)*9            # split total data 90% train and 10% test
     print("total speaker number : %d"%total_speaker_num)
@@ -130,10 +135,78 @@ def save_spectrogram_tisv():
         else:
             np.save(os.path.join(config.test_path, "speaker%d.npy"%(i-train_speaker_num)), utterances_spec)
 
+def save_spectrogram_tisv_voxceleb(TEST):
+    """ Full preprocess of text independent utterance. The log-mel-spectrogram is saved as numpy file.
+        Each partial utterance is splitted by voice detection using DB
+        and the first and the last 180 frames from each partial utterance are saved.
+        Need : utterance data set (VTCK)
+    """
+    print("start text independent utterance feature extraction")
+
+    if TEST:
+        print("Generating Test Data")
+        save_path = config.test_path
+        audio_path = '../../data/Voxceleb1/vox1_test*/*/*/*/*.wav'
+    else:
+        print("Generating Training Data")
+        save_path = config.train_path
+        audio_path = '../../data/Voxceleb1/vox1_dev*/*/*/*/*.wav'
+    audio_path = glob.glob(os.path.dirname(os.path.dirname(audio_path)))
+
+    os.makedirs(save_path, exist_ok=True)  # make folder to save files
+    utter_min_len = int((config.tisv_frame * config.hop/config.sr + config.window/config.sr) * config.sr)   # lower bound of utterance length
+
+    total_speaker_num = len(audio_path)
+    print("total speaker number : %d"%total_speaker_num)
+
+    metadata_col_names = ['id','speaker_num']
+    df_metadata = pd.DataFrame([],columns=metadata_col_names)
+
+    for i,folder in enumerate(audio_path):
+        print("%dth speaker processing..."%i)
+        utterances_spec_spk = []
+        id = os.path.basename(folder)
+        for root, dirs, utter_names in os.walk(folder):
+            for utter_name in utter_names:
+                utterances_spec = []
+                if utter_name[-4:] == '.WAV' or utter_name[-4:] == '.wav':
+                    utter_path = os.path.join(root, utter_name)  # path of each utterance
+                    utter, sr = librosa.core.load(utter_path, config.sr)  # load utterance audio
+                    intervals = librosa.effects.split(utter, top_db=20)  # voice activity detection
+                    for interval in intervals:
+                        if (interval[1] - interval[0]) > utter_min_len:  # If partial utterance is sufficient long,
+                            utter_part = utter[interval[0]:interval[1]]
+                            S = librosa.core.stft(y=utter_part, n_fft=config.nfft,win_length=config.window,
+                                                  hop_length=config.hop)
+                            S = np.abs(S) ** 2
+                            mel_basis = librosa.filters.mel(sr=config.sr, n_fft=config.nfft, n_mels=80)
+                            S = np.log10(np.dot(mel_basis, S) + 1e-6)  # log mel spectrogram of utterances
+                            for j in range(0,S.shape[1]//config.tisv_frame):
+                                start = j*config.tisv_frame
+                                # to_save = S[:,start:start+config.tisv_frame]
+                                utterances_spec.append(S[:,start:start+config.tisv_frame])  #get each utterance part
+
+                utterances_spec_spk += utterances_spec
+
+        utterances_spec_spk = np.array(utterances_spec_spk)
+        print(utterances_spec_spk.shape)
+        speaker_name = "speaker%d" % i
+        np.save(os.path.join(save_path, speaker_name + "npy"), utterances_spec_spk)
+        df_metadata = df_metadata.append(pd.DataFrame([[id,speaker_name]],columns=metadata_col_names),ignore_index=True)
+
+    df_metadata.to_csv(os.path.join(save_path,'metadata.csv'),index=False)
+
 
 if __name__ == "__main__":
-    extract_noise()
-    if config.tdsv:
-        save_spectrogram_tdsv()
-    else:
-        save_spectrogram_tisv()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--TEST', action='store_true', default=False, help='whether to use speaker discriminator as part of loss')
+    args = parser.parse_args()
+    save_spectrogram_tisv_voxceleb(TEST=args.TEST)
+    
+    # save_spectrogram_tisv()
+    # extract_noise()
+    # if config.tdsv:
+    #     save_spectrogram_tdsv()
+    # else:
+    #     save_spectrogram_tisv()
